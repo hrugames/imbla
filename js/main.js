@@ -19,7 +19,8 @@ Main.prototype.init = function() {
   this.container.appendChild(this.renderer.domElement);
   
   this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 1, 1000);
-  this.camera.position.y = 30;
+  this.camera.position = new THREE.Vector3(-20, 20, 20);
+  this.camera.lookAt(new THREE.Vector3(0, 0, 0));
   
   // Controls
   
