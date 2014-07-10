@@ -19,7 +19,7 @@ Main.prototype.init = function() {
   this.container.appendChild(this.renderer.domElement);
   
   this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 1, 1000);
-  this.camera.position.z = 400;
+  this.camera.position.y = 30;
   
   // Controls
   
@@ -28,20 +28,22 @@ Main.prototype.init = function() {
   controls.noZoom = true;
   controls.noPan = true;
   controls.autoRotate = true;
-  
   this.controls = controls;
+  
+  this.world = new World(this.camera);
+  this.world.init();
   
   this.scene = new THREE.Scene();
   
-  var geometry = new THREE.BoxGeometry(200, 200, 200);
-  
-  var texture = THREE.ImageUtils.loadTexture('textures/crate.gif');
-  texture.anisotropy = this.renderer.getMaxAnisotropy();
-  
-  var material = new THREE.MeshBasicMaterial({ map: texture });
-  
-  this.mesh = new THREE.Mesh(geometry, material);
-  this.scene.add(this.mesh);
+  var ambientLight = new THREE.AmbientLight(0xaaaaaa);
+  this.scene.add(ambientLight);
+
+  var directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+  directionalLight.position.set(1, 0.8, 0.5).normalize();
+  this.scene.add(directionalLight);
+
+  var root = this.world.getRoot();
+  this.scene.add(root);
 
   this.stats = new Stats();
   this.stats.domElement.style.position = 'absolute';
@@ -66,9 +68,7 @@ Main.prototype.animate = function() {
 };
 
 Main.prototype.update = function(dt) {
-  this.mesh.rotation.x += 5 / 16 * dt;
-  this.mesh.rotation.y += 10 / 16 * dt;
-
+  this.world.update(dt);
   this.stats.update();
 };
 
