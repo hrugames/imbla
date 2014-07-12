@@ -18,17 +18,15 @@ Main.prototype.init = function() {
   this.renderer.setSize(window.innerWidth, window.innerHeight);
   this.container.appendChild(this.renderer.domElement);
   
-  this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 1, 1000);
-  this.camera.position = new THREE.Vector3(-20, 20, 20);
-  this.camera.lookAt(new THREE.Vector3(0, 0, 0));
+  this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.2, 1000);
+  this.camera.position = new THREE.Vector3(0, 21, 0);
   
   // Controls
-  
-  var controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
-  controls.target.set(0, 0, 0);
-  controls.noZoom = true;
-  controls.noPan = true;
-  controls.autoRotate = true;
+
+  var controls = new THREE.FirstPersonControls(this.camera, this.container);
+  controls.movementSpeed = 5;
+  controls.lookSpeed = 0.2;
+  controls.lookVertical = true;
   this.controls = controls;
   
   this.world = new World(this.camera);
@@ -59,6 +57,7 @@ Main.prototype.onWindowResize = function() {
   this.camera.updateProjectionMatrix();
     
   this.renderer.setSize( window.innerWidth, window.innerHeight );
+  this.controls.handleResize();
 };
 
 Main.prototype.animate = function() {
@@ -70,6 +69,7 @@ Main.prototype.animate = function() {
 
 Main.prototype.update = function(dt) {
   this.world.update(dt);
+  this.controls.update(dt);
   this.stats.update();
 };
 

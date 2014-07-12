@@ -3,7 +3,8 @@ Materials = function() {
 };
 
 Materials.ERROR = 0;
-Materials.CELLS = 1;
+Materials.SOLID_CELLS = 1;
+Materials.TRANSPARENT_CELLS = 2;
 
 Materials.cache_ = {};
 
@@ -17,14 +18,27 @@ Materials.getMaterial = function(type) {
 Materials.loadMaterial_ = function(type) {
   var texture;
   switch (type) {
-    case Materials.CELLS:
-      texture = THREE.ImageUtils.loadTexture('textures/cell_pack.png');
-      break;
-    default:
-      texture = THREE.ImageUtils.loadTexture('textures/error.png');
-      break;
+    case Materials.SOLID_CELLS:
+      return new THREE.MeshLambertMaterial({
+        map: Materials.loadTexture_('textures/cell_pack.png'),
+        ambient: 0xbbbbbb
+      });
+    case Materials.TRANSPARENT_CELLS:
+      return new THREE.MeshLambertMaterial({
+        map: Materials.loadTexture_('textures/cell_pack.png'),
+        ambient: 0xbbbbbb,
+        transparent:true
+      });
   }
+  return new THREE.MeshLambertMaterial({
+    map: Materials.loadTexture_('textures/error.png'),
+    ambient: 0xbbbbbb
+  });
+};
+
+Materials.loadTexture_ = function(fn) {
+  var texture = THREE.ImageUtils.loadTexture(fn);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.LinearMipMapLinearFilter;
-  return new THREE.MeshLambertMaterial({ map: texture, ambient: 0xbbbbbb });
+  return texture;
 };
