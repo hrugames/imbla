@@ -9,7 +9,7 @@ World = function(camera) {
 };
 
 World.X_SIZE = 50;
-World.Y_SIZE = 20;
+World.Y_SIZE = 40;
 World.Z_SIZE = 50;
 
 World.TOTAL_SIZE = World.X_SIZE * World.Y_SIZE * World.Z_SIZE;
@@ -99,14 +99,44 @@ World.prototype.createRandomWorld_ = function() {
   for (var i = 0; i < World.TOTAL_SIZE; ++i) {
     this.cells_[i] = World.EMPTY;
   }
-  var height = World.Y_SIZE / 2;
+  var w = this;
+  var drop = function(x, z, cellType, radius) {
+    for (var i = -radius; i <= radius; ++i) {
+      for (var j = -radius; j <= radius; ++j) {
+        if (!World.isIn(x + i, 0, z + j)) {
+          continue;
+        }
+        var h = Math.round(Math.sqrt(radius * radius - i * i - j * j));
+        var k;
+        for (k = World.Y_SIZE; k > 0; --k) {
+          if (w.getCell(x + i, k - 1, z + j) != World.CellType.EMPTY) {
+            break;
+          }
+        }
+        for (; h > 0 && k < World.Y_SIZE; --h,++k) {
+          w.setCell(x + i, k, z + j, cellType);
+        }
+      }
+    }
+  };
+
   for (var i = 0; i < World.X_SIZE; ++i) {
     for (var j = 0; j < World.Z_SIZE; ++j) {
-      height += Math.floor(Math.random() * 2) * 2 - 1;
-      height = Math.max(0, Math.min(height, World.Y_SIZE - 1));
-      var cellType = Math.floor(Math.random() * 4) + 2;
-      for (var k = 0; k <= height; ++k) {
-        this.setCell(i, k, ((i & 1) ? j : (World.Z_SIZE - j - 1)), cellType);
+      this.setCell(i, 0, j, World.CellType.DIRT);
+    }
+  }
+  var cts = [World.CellType.DIRT, World.CellType.WOOD, World.CellType.ROCK];
+  var sts = [2, 4, 6];
+  var rs = [3, 4, 5]
+  for (var ct = 0; ct < cts.length; ++ct) {
+    var cellType = cts[ct];
+    var st = sts[ct];
+    for (var i = 0; i < World.X_SIZE; i += st) {
+      for (var j = 0; j < World.Z_SIZE; j += st) {
+        var x = i + Math.floor(Math.random() * (st * 2 + 1)) - st;
+        var z = j + Math.floor(Math.random() * (st * 2 + 1)) - st;
+        var r = Math.floor(Math.random() * rs[ct]);
+        drop(x, z, cellType, r);
       }
     }
   }
