@@ -65,6 +65,15 @@ World.NEXT_OFFSET = [
   [0, -1, 0]
 ];
 
+World.MAX_WATER_ITER = World.Y_SIZE * 3;
+
+World.WATER_MOVES = [
+  [0, 0, -1],
+  [1, 0, 0],
+  [0, 0, 1],
+  [-1, 0, 0]
+];
+
 World.isIn = function(x, y, z) {
   return x >= 0 && y >= 0 && z >= 0 &&
       x < World.X_SIZE && y < World.Y_SIZE && z < World.Z_SIZE;
@@ -100,6 +109,7 @@ World.prototype.createRandomWorld_ = function() {
     this.cells_[i] = World.EMPTY;
   }
   var w = this;
+
   var drop = function(x, z, cellType, radius) {
     for (var i = -radius; i <= radius; ++i) {
       for (var j = -radius; j <= radius; ++j) {
@@ -137,6 +147,44 @@ World.prototype.createRandomWorld_ = function() {
         var z = j + Math.floor(Math.random() * (st * 2 + 1)) - st;
         var r = Math.floor(Math.random() * rs[ct]);
         drop(x, z, cellType, r);
+      }
+    }
+  }
+
+  // Spawn water
+  var wcs = [];
+  for (var i = 0; i < World.X_SIZE; ++i) {
+    for (var j = 0; j < World.Z_SIZE; ++j) {
+      if (this.getCell(i, World.Y_SIZE - 1, j) == World.CellType.EMPTY) {
+        wcs.push([i, World.Y_SIZE - 1, j, 0]);
+        this.setCell(i, World.Y_SIZE - 1, j, World.CellType.WATER);
+      }
+    }
+  }
+  var n = wcs.length;
+  for (var iter = 0; iter < World.MAX_WATER_ITER; ++iter) {
+    for (var i = 0; i < n; ++i) {
+      if (World.isIn(wcs[i][0], wcs[i][1] - 1, wcs[i][2]) &&
+          this.getCell(wcs[i][0], wcs[i][1] - 1, wcs[i][2]) == World.CellType.EMPTY) {
+        this.setCell(wcs[i][0], wcs[i][1] - 1, wcs[i][2], World.CellType.WATER);
+        this.setCell(wcs[i][0], wcs[i][1], wcs[i][2], World.CellType.EMPTY);
+        --wcs[i][1];
+      } else {
+        for (var j = 0; j < 4; ++j) {
+          var nx = wcs[i][0] + World.WATER_MOVES[wcs[i][3]][0];
+          var ny = wcs[i][1] + World.WATER_MOVES[wcs[i][3]][1];
+          var nz = wcs[i][2] + World.WATER_MOVES[wcs[i][3]][2];
+          if (World.isIn(nx, ny, nz) &&
+              this.getCell(nx, ny, nz) == World.CellType.EMPTY) {
+            this.setCell(nx, ny, nz, World.CellType.WATER);
+            this.setCell(wcs[i][0], wcs[i][1], wcs[i][2], World.CellType.EMPTY);
+            wcs[i][0] = nx;
+            wcs[i][1] = ny;
+            wcs[i][2] = nz;
+            break;
+          }
+          wcs[i][3] = (wcs[i][3] + 1) & 3;
+        }
       }
     }
   }
