@@ -206,12 +206,13 @@ World.prototype.buildMesh_ = function() {
     var y = Math.floor(i / World.Y_OFFSET) % World.Y_SIZE;
     var z = Math.floor(i / World.Z_OFFSET) % World.Z_SIZE;
     
-    var tx = World.CELL_TX_OFFSET[cellType];
-    var ty = World.CELL_TY_OFFSET[cellType];
+    var tx = World.CELL_TX_OFFSET[cellType] + eps;
+    var ty = World.CELL_TY_OFFSET[cellType] + eps;
 
     var materialIndex = World.isTransparent_(cellType) ? 1 : 0;
 
-    var addedFace = false; 
+    var addedFace = false;
+    var eps = World.CELL_TX_SIZE * 0.05;
     for (var j = 0; j < 6; ++j) {
       var norm = World.NEXT_OFFSET[j];
       var nextCell = this.getCell(
@@ -235,12 +236,12 @@ World.prototype.buildMesh_ = function() {
 
         geo.faceVertexUvs[0].push([
           new THREE.Vector2(tx, ty),
-          new THREE.Vector2(tx + World.CELL_TX_SIZE, ty + World.CELL_TY_SIZE),
-          new THREE.Vector2(tx + World.CELL_TX_SIZE, ty)
+          new THREE.Vector2(tx + World.CELL_TX_SIZE - 2 * eps, ty + World.CELL_TY_SIZE - 2 * eps),
+          new THREE.Vector2(tx + World.CELL_TX_SIZE - 2 * eps, ty)
         ], [
           new THREE.Vector2(tx, ty),
-          new THREE.Vector2(tx, ty + World.CELL_TY_SIZE),
-          new THREE.Vector2(tx + World.CELL_TX_SIZE, ty + World.CELL_TY_SIZE)
+          new THREE.Vector2(tx, ty + World.CELL_TY_SIZE - 2 * eps),
+          new THREE.Vector2(tx + World.CELL_TX_SIZE - 2 * eps, ty + World.CELL_TY_SIZE - 2 * eps)
         ]);
       }
     }
