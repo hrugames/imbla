@@ -1,5 +1,6 @@
 World = function(camera) {
   this.cells_ = new Uint8Array(World.TOTAL_SIZE);
+  this.mainGeoFaces_ = new Int32Array(World.TOTAL_SIZE * 6);
 
   this.root_ = new THREE.Object3D();
   this.root_.position.x = -World.X_SIZE / 2;
@@ -48,21 +49,21 @@ World.CELL_TY_OFFSET = [
 ];
 
 World.FACES = [
-  [0, 2, 1, 3],
-  [1, 6, 5, 2],
   [5, 7, 4, 6],
-  [4, 3, 0, 7],
   [3, 6, 2, 7],
-  [1, 4, 0, 5]
+  [1, 6, 5, 2],
+  [0, 2, 1, 3],
+  [1, 4, 0, 5],
+  [4, 3, 0, 7]
 ];
 
 World.NEXT_OFFSET = [
-  [0, 0, -1],
-  [1, 0, 0],
   [0, 0, 1],
-  [-1, 0, 0],
   [0, 1, 0],
-  [0, -1, 0]
+  [1, 0, 0],
+  [0, 0, -1],
+  [0, -1, 0],
+  [-1, 0, 0]
 ];
 
 World.MAX_WATER_ITER = World.Y_SIZE * 3;
@@ -73,6 +74,10 @@ World.WATER_MOVES = [
   [0, 0, 1],
   [-1, 0, 0]
 ];
+
+World.id_ = function(x, y, z) {
+  return x + y * World.Y_OFFSET + z * World.Z_OFFSET;
+};
 
 World.isIn = function(x, y, z) {
   return x >= 0 && y >= 0 && z >= 0 &&
@@ -196,6 +201,9 @@ World.prototype.createRandomWorld_ = function() {
 World.prototype.buildMesh_ = function() {
   var geo = new THREE.Geometry();
   var vi = 0;
+  for (var i = 0; i < World.TOTAL_SIZE * 6; ++i) {
+    this.mainGeoFaces_[i] = -1;
+  }
   for (var i = 0; i < World.TOTAL_SIZE; ++i) {
     var cellType = this.cells_[i];
     if (!cellType || cellType == World.CellType.EMPTY) {
@@ -223,6 +231,7 @@ World.prototype.buildMesh_ = function() {
       if (nextCell != cellType && World.isTransparent_(nextCell)) {
         addedFace = true;
         var f = World.FACES[j];
+        this.mainGeoFaces_[i * 6 + j] = geo.faces.length;
 
         var face = new THREE.Face3(vi+f[0], vi+f[1], vi+f[2]);
         face.normal.set(norm[0], norm[1], norm[2]);
@@ -261,12 +270,15 @@ World.prototype.buildMesh_ = function() {
   }
   geo.mergeVertices();
   geo.computeVertexNormals();
+  geo.computeBoundingBox();
+  geo.computeBoundingSphere();
   // geo.computeFaceNormals();
   var materials = [
     Materials.getMaterial(Materials.SOLID_CELLS),
     Materials.getMaterial(Materials.TRANSPARENT_CELLS)
   ];
   var mesh = new THREE.Mesh(geo, new THREE.MeshFaceMaterial(materials));
+  this.mainMesh_ = mesh;
   this.root_.add(mesh);
 };
 
@@ -279,11 +291,61 @@ World.prototype.moveCamera_ = function() {
 };
 
 
+World.prototype.updateCell = function(x, y, z, newCell) {
+  if (!World.isIn(x, y, z)) {
+    // TODO(hru): log error
+    return;
+  }
+  var updated = false;
+  var id = World.id_(x, y, z);
+  var cellType = this.cells_[id];
+  if (newCell == cellType) {
+    return;
+  }
+  var geo = this.mainMesh_.geometry;
+  var removeFace = function(faceId) {
+    geo.elementsNeedUpdate = true;
+    geo.verticesNeedUpdate = true;
+    geo.faces[faceId].a = 0;
+    geo.faces[faceId].b = 0;
+    geo.faces[faceId].c = 0;
+    geo.faces[faceId + 1].a = 0;
+    geo.faces[faceId + 1].b = 0;
+    geo.faces[faceId + 1].c = 0;
+  };
+  for (var j = 0; j < 6; ++j) {
+    var norm = World.NEXT_OFFSET[j];
+    var nx = x + norm[0];
+    var ny = y + norm[1];
+    var nz = z + norm[2];
+    var nextId = World.id_(nx, ny, nz);
+    var nextCell = this.getCell(nx, ny, nz);
+    // need to remove this cell
+    if (cellType != World.CellType.EMPTY && nextCell != cellType && World.isTransparent_(nextCell)) {
+      var faceId = this.mainGeoFaces_[id * 6 + j];
+      if (faceId >= 0) {
+        removeFace(faceId);
+        this.mainGeoFaces_[id * 6 + j] = -1;
+      }
+    }
+    // near cell faces
+    if (nextCell != World.CellType.EMPTY && nextCell != cellType && World.isTransparent_(cellType)) {
+      var faceId = this.mainGeoFaces_[nextId * 6 + j];
+      if (faceId >= 0 && nextCell != newCell && World.isTransparent_(newCell)) {
+        removeFace(faceId);
+        this.mainGeoFaces_[nextId * 6 + j] = -1;
+      }
+    }
+  }
+  this.cells_[id] = newCell;
+};
+
+
 World.prototype.getCell = function(x, y, z) {
   if (!World.isIn(x, y, z)) {
     return World.CellType.EMPTY;
   }
-  return this.cells_[x + y * World.Y_OFFSET + z * World.Z_OFFSET];
+  return this.cells_[World.id_(x, y, z)];
 };
 
 /**
@@ -302,9 +364,21 @@ World.prototype.setCell = function(x, y, z, cell) {
     // TODO(hru): log error
     return;
   }
-  this.cells_[x + y * World.Y_OFFSET + z * World.Z_OFFSET] = cell;
+  this.cells_[World.id_(x, y, z)] = cell;
 };
 
 World.prototype.update = function(dt) {
-
+  if (Math.random() > 0.1) {
+    return;
+  } 
+  for (var k = World.Y_SIZE - 1; k >= 0; --k) {
+    for (var i = 0; i < World.X_SIZE; ++i) {
+      for (var j = 0; j < World.Z_SIZE; ++j) {
+        if (this.getCell(i, k, j) != World.CellType.EMPTY) {
+          this.updateCell(i, k, j, World.CellType.EMPTY);
+          return;
+        }
+      }
+    }
+  }
 };
