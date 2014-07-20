@@ -1,6 +1,6 @@
 World = function(camera) {
   this.cells_ = new Uint8Array(World.TOTAL_SIZE);
-  this.mainGeoFaces_ = new Int32Array(World.TOTAL_SIZE * 6);
+  this.geoFaces_ = new Int32Array(World.TOTAL_SIZE * 6);
 
   this.root_ = new THREE.Object3D();
   this.root_.position.x = -World.X_SIZE / 2;
@@ -12,6 +12,8 @@ World = function(camera) {
 World.X_SIZE = 50;
 World.Y_SIZE = 40;
 World.Z_SIZE = 50;
+
+World.FRESH_FACE = 1 << 30;
 
 World.TOTAL_SIZE = World.X_SIZE * World.Y_SIZE * World.Z_SIZE;
 
@@ -202,7 +204,7 @@ World.prototype.buildMesh_ = function() {
   var geo = new THREE.Geometry();
   var vi = 0;
   for (var i = 0; i < World.TOTAL_SIZE * 6; ++i) {
-    this.mainGeoFaces_[i] = -1;
+    this.geoFaces_[i] = -1;
   }
   for (var i = 0; i < World.TOTAL_SIZE; ++i) {
     var cellType = this.cells_[i];
@@ -231,7 +233,7 @@ World.prototype.buildMesh_ = function() {
       if (nextCell != cellType && World.isTransparent_(nextCell)) {
         addedFace = true;
         var f = World.FACES[j];
-        this.mainGeoFaces_[i * 6 + j] = geo.faces.length;
+        this.geoFaces_[i * 6 + j] = geo.faces.length;
 
         var face = new THREE.Face3(vi+f[0], vi+f[1], vi+f[2]);
         face.normal.set(norm[0], norm[1], norm[2]);
@@ -277,9 +279,13 @@ World.prototype.buildMesh_ = function() {
     Materials.getMaterial(Materials.SOLID_CELLS),
     Materials.getMaterial(Materials.TRANSPARENT_CELLS)
   ];
-  var mesh = new THREE.Mesh(geo, new THREE.MeshFaceMaterial(materials));
-  this.mainMesh_ = mesh;
-  this.root_.add(mesh);
+  this.mainMesh_ = new THREE.Mesh(geo, new THREE.MeshFaceMaterial(materials));
+  this.root_.add(this.mainMesh_);
+  geo = new THREE.Geometry();
+  geo.buffersNeedUpdate = true;
+  this.freshMesh_ = new THREE.Mesh(geo, new THREE.MeshFaceMaterial(materials));
+  this.freshMesh_.dynamic = true;
+  this.root_.add(this.freshMesh_);
 };
 
 
@@ -303,16 +309,72 @@ World.prototype.updateCell = function(x, y, z, newCell) {
     return;
   }
   var geo = this.mainMesh_.geometry;
+  var freshGeo = this.freshMesh_.geometry;
   var removeFace = function(faceId) {
+    var g = (faceId >= World.FRESH_FACE) ? freshGeo : geo; 
+    faceId %= World.FRESH_FACE;
+    g.elementsNeedUpdate = true;
+    g.verticesNeedUpdate = true;
+    g.faces[faceId].a = 0;
+    g.faces[faceId].b = 0;
+    g.faces[faceId].c = 0;
+    g.faces[faceId + 1].a = 0;
+    g.faces[faceId + 1].b = 0;
+    g.faces[faceId + 1].c = 0;
+  };
+  var addVertices = function(geo, x, y, z) {
+    geo.vertices.push(
+      new THREE.Vector3(x, y, z),
+      new THREE.Vector3(x + 1, y, z),
+      new THREE.Vector3(x + 1, y + 1, z),
+      new THREE.Vector3(x, y + 1, z),
+      new THREE.Vector3(x, y, z + 1),
+      new THREE.Vector3(x + 1, y, z + 1),
+      new THREE.Vector3(x + 1, y + 1, z + 1),
+      new THREE.Vector3(x, y + 1, z + 1)
+    );
+  };
+  var eps = World.CELL_TX_SIZE * 0.05;
+  var faceAdded = false;
+
+  var addFace = function(w, id, j, vi, ct) {
+    var tx = World.CELL_TX_OFFSET[ct] + eps;
+    var ty = World.CELL_TY_OFFSET[ct] + eps;
+    var materialIndex = World.isTransparent_(ct) ? 1 : 0;
+
+    var geo = w.freshMesh_.geometry;
+    var f = World.FACES[j];
+    var norm = World.NEXT_OFFSET[j];
+    w.geoFaces_[id * 6 + j] = World.FRESH_FACE + geo.faces.length;
+
+    var face = new THREE.Face3(vi+f[0], vi+f[1], vi+f[2]);
+    face.normal.set(norm[0], norm[1], norm[2]);
+    face.materialIndex = materialIndex;
+    geo.faces.push(face);
+
+    face = new THREE.Face3(vi+f[0], vi+f[3], vi+f[1]);
+    face.normal.set(norm[0], norm[1], norm[2]);
+    face.materialIndex = materialIndex;
+    geo.faces.push(face);
+
+    geo.faceVertexUvs[0].push([
+      new THREE.Vector2(tx, ty),
+      new THREE.Vector2(tx + World.CELL_TX_SIZE - 2 * eps, ty + World.CELL_TY_SIZE - 2 * eps),
+      new THREE.Vector2(tx + World.CELL_TX_SIZE - 2 * eps, ty)
+    ], [
+      new THREE.Vector2(tx, ty),
+      new THREE.Vector2(tx, ty + World.CELL_TY_SIZE - 2 * eps),
+      new THREE.Vector2(tx + World.CELL_TX_SIZE - 2 * eps, ty + World.CELL_TY_SIZE - 2 * eps)
+    ]);
     geo.elementsNeedUpdate = true;
     geo.verticesNeedUpdate = true;
-    geo.faces[faceId].a = 0;
-    geo.faces[faceId].b = 0;
-    geo.faces[faceId].c = 0;
-    geo.faces[faceId + 1].a = 0;
-    geo.faces[faceId + 1].b = 0;
-    geo.faces[faceId + 1].c = 0;
+    geo.normalsNeedUpdate = true;
+    geo.colorsNeedUpdate = true;
+    geo.buffersNeedUpdate = true;
+    geo.uvsNeedUpdate = true;
+    faceAdded = true;
   };
+  var vi = -1;
   for (var j = 0; j < 6; ++j) {
     var norm = World.NEXT_OFFSET[j];
     var nx = x + norm[0];
@@ -320,24 +382,43 @@ World.prototype.updateCell = function(x, y, z, newCell) {
     var nz = z + norm[2];
     var nextId = World.id_(nx, ny, nz);
     var nextCell = this.getCell(nx, ny, nz);
-    // need to remove this cell
+    // need to remove this face
     if (cellType != World.CellType.EMPTY && nextCell != cellType && World.isTransparent_(nextCell)) {
-      var faceId = this.mainGeoFaces_[id * 6 + j];
+      var faceId = this.geoFaces_[id * 6 + j];
       if (faceId >= 0) {
         removeFace(faceId);
-        this.mainGeoFaces_[id * 6 + j] = -1;
+        this.geoFaces_[id * 6 + j] = -1;
       }
     }
-    // near cell faces
-    if (nextCell != World.CellType.EMPTY && nextCell != cellType && World.isTransparent_(cellType)) {
-      var faceId = this.mainGeoFaces_[nextId * 6 + j];
-      if (faceId >= 0 && nextCell != newCell && World.isTransparent_(newCell)) {
-        removeFace(faceId);
-        this.mainGeoFaces_[nextId * 6 + j] = -1;
+    if (newCell != World.CellType.EMPTY && nextCell != newCell && World.isTransparent_(nextCell)) {
+      if (vi < 0) {
+        vi = freshGeo.vertices.length;
+        addVertices(freshGeo, x, y, z);
       }
+      addFace(this, id, j, vi, newCell);
+    }
+    // near cell faces
+    var nj = (j + 3) % 6;
+    if (nextCell != World.CellType.EMPTY && nextCell != cellType && World.isTransparent_(cellType)) {
+      var faceId = this.geoFaces_[nextId * 6 + nj];
+      if (faceId >= 0 && (nextCell == newCell || !World.isTransparent_(newCell))) {
+        removeFace(faceId);
+        this.geoFaces_[nextId * 6 + nj] = -1;
+      }
+    }
+    if (nextCell != World.CellType.EMPTY && nextCell != newCell && World.isTransparent_(newCell)) {
+      var tvi = freshGeo.vertices.length;
+      addVertices(freshGeo, nx, ny, nz);
+      addFace(this, nextId, nj, tvi, nextCell);
     }
   }
   this.cells_[id] = newCell;
+  if (faceAdded) {
+    freshGeo.mergeVertices();
+    freshGeo.computeVertexNormals();
+    freshGeo.computeBoundingBox();
+    freshGeo.computeBoundingSphere();
+  }
 };
 
 
@@ -371,14 +452,20 @@ World.prototype.update = function(dt) {
   if (Math.random() > 0.1) {
     return;
   } 
+/*
   for (var k = World.Y_SIZE - 1; k >= 0; --k) {
     for (var i = 0; i < World.X_SIZE; ++i) {
       for (var j = 0; j < World.Z_SIZE; ++j) {
-        if (this.getCell(i, k, j) != World.CellType.EMPTY) {
-          this.updateCell(i, k, j, World.CellType.EMPTY);
+        if (this.getCell(i, k, j) == World.CellType.EMPTY) {
+          this.updateCell(i, k, j, World.CellType.ROCK);
           return;
         }
       }
     }
   }
+  */
+  var i = Math.floor(Math.random() * World.X_SIZE);
+  var k = Math.floor(Math.random() * World.Y_SIZE);
+  var j = Math.floor(Math.random() * World.Z_SIZE);
+  this.updateCell(i, k, j, World.CellType.ROCK);
 };
